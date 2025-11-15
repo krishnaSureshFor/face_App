@@ -1,33 +1,20 @@
-import face_recognition
-import os
-import pickle
 import cv2
+from utils.face_utils import extract_embedding, load_db, save_db
 
-DB_FILE = "database.pkl"
+name = input("Enter name: ")
+path = input("Enter image path: ")
 
-def add_face(name, image_path):
-    # Load image
-    img = face_recognition.load_image_file(image_path)
-    enc = face_recognition.face_encodings(img)
+img = cv2.imread(path)
+img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-    if len(enc) == 0:
-        print("❌ No face detected!")
-        return
+emb = extract_embedding(img_rgb)
 
-    enc = enc[0]
+if emb is None:
+    print("❌ No face found")
+else:
+    names, embeds = load_db()
+    names.append(name)
+    embeds.append(emb)
 
-    # Load existing DB
-    if os.path.exists(DB_FILE):
-        db = pickle.load(open(DB_FILE, "rb"))
-    else:
-        db = {}
-
-    db[name] = enc
-
-    pickle.dump(db, open(DB_FILE, "wb"))
-    print(f"✅ Face added: {name}")
-
-if __name__ == "__main__":
-    name = input("Enter name: ")
-    image_path = input("Enter image file path: ")
-    add_face(name, image_path)
+    save_db(names, embeds)
+    print("✅ Face added:", name)
