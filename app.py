@@ -1,52 +1,44 @@
 import streamlit as st
-import face_recognition
+import cv2
 import numpy as np
-from utils.face_utils import load_database, encode_face
-
-st.set_page_config(page_title="Face Recognition App", layout="centered")
+from utils.face_utils import extract_embedding, load_db
 
 st.title("👤 Face Recognition Greeting App")
 
-db = load_database()
+names, embeds = load_db()
 
-st.write("### Known People:")
-if len(db) == 0:
-    st.warning("No faces added yet!")
+if len(names) == 0:
+    st.warning("No faces in database. Add using add_face.py")
 else:
-    st.success(", ".join(db.keys()))
+    st.success("Loaded persons: " + ", ".join(names))
 
-option = st.radio("Choose input source:", ["Upload Image", "Camera"])
+choice = st.radio("Input:", ["Upload Image", "Camera"])
 
-image = None
+img = None
 
-if option == "Upload Image":
-    upload = st.file_uploader("Upload image", type=["jpg","jpeg","png"])
-    if upload:
-        image = face_recognition.load_image_file(upload)
-        st.image(upload, caption="Uploaded Image")
+if choice == "Upload Image":
+    file = st.file_uploader("Upload", type=["jpg","jpeg","png"])
+    if file:
+        img = cv2.imdecode(np.frombuffer(file.read(), np.uint8), 1)
 
-elif option == "Camera":
-    cam = st.camera_input("Take a picture")
+elif choice == "Camera":
+    cam = st.camera_input("Take picture")
     if cam:
-        image = face_recognition.load_image_file(cam)
-        st.image(cam, caption="Camera Capture")
+        img = cv2.imdecode(np.frombuffer(cam.getvalue(), np.uint8), 1)
 
-if image is not None:
-    st.write("Processing...")
+if img is not None:
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    emb = extract_embedding(rgb)
 
-    enc = encode_face(image)
-
-    if enc is None:
-        st.error("No face detected!")
+    if emb is None:
+        st.error("No face detected")
     else:
-        names = list(db.keys())
-        encodings = list(db.values())
+        dists = [np.dot(emb, e) / (np.linalg.norm(emb) * np.linalg.norm(e)) for e in embeds]
+        best = np.argmax(dists)
 
-        distances = face_recognition.face_distance(encodings, enc)
-        best_match = np.argmin(distances)
-
-        if distances[best_match] < 0.45:
-            person = names[best_match]
-            st.success(f"👋 Hello **{person}**!")
+        if dists[best] > 0.80:
+            st.success(f"👋 Hello **{names[best]}**!")
         else:
-            st.error("Unknown Person")
+            st.error("Unknown person")
+
+    st.image(rgb)
