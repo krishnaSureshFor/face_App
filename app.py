@@ -1,53 +1,52 @@
-import cv2
+import streamlit as st
 import face_recognition
-import pickle
 import numpy as np
-import time
+from utils.face_utils import load_database, encode_face
 
-DB_FILE = "database.pkl"
+st.set_page_config(page_title="Face Recognition App", layout="centered")
 
-# Load database
-db = pickle.load(open(DB_FILE, "rb"))
-known_names = list(db.keys())
-known_encodings = list(db.values())
+st.title("👤 Face Recognition Greeting App")
 
-print("Loaded faces:", known_names)
+db = load_database()
 
-video = cv2.VideoCapture(0)
-last_greet = {}
+st.write("### Known People:")
+if len(db) == 0:
+    st.warning("No faces added yet!")
+else:
+    st.success(", ".join(db.keys()))
 
-while True:
-    ret, frame = video.read()
-    rgb_frame = frame[:, :, ::-1]
+option = st.radio("Choose input source:", ["Upload Image", "Camera"])
 
-    # Detect faces
-    faces = face_recognition.face_locations(rgb_frame)
-    encodings = face_recognition.face_encodings(rgb_frame, faces)
+image = None
 
-    for (top, right, bottom, left), face_enc in zip(faces, encodings):
+if option == "Upload Image":
+    upload = st.file_uploader("Upload image", type=["jpg","jpeg","png"])
+    if upload:
+        image = face_recognition.load_image_file(upload)
+        st.image(upload, caption="Uploaded Image")
 
-        matches = face_recognition.compare_faces(known_encodings, face_enc, tolerance=0.45)
-        distances = face_recognition.face_distance(known_encodings, face_enc)
+elif option == "Camera":
+    cam = st.camera_input("Take a picture")
+    if cam:
+        image = face_recognition.load_image_file(cam)
+        st.image(cam, caption="Camera Capture")
+
+if image is not None:
+    st.write("Processing...")
+
+    enc = encode_face(image)
+
+    if enc is None:
+        st.error("No face detected!")
+    else:
+        names = list(db.keys())
+        encodings = list(db.values())
+
+        distances = face_recognition.face_distance(encodings, enc)
         best_match = np.argmin(distances)
 
-        name = "Unknown"
-        if matches[best_match]:
-            name = known_names[best_match]
-
-            # Greet once every 5 seconds
-            if name not in last_greet or time.time() - last_greet[name] > 5:
-                print(f"👋 Hello {name}!")
-                last_greet[name] = time.time()
-
-        # Draw box & name
-        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-        cv2.putText(frame, name, (left, top - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-    cv2.imshow("Face Recognition App", frame)
-
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
-
-video.release()
-cv2.destroyAllWindows()
+        if distances[best_match] < 0.45:
+            person = names[best_match]
+            st.success(f"👋 Hello **{person}**!")
+        else:
+            st.error("Unknown Person")
